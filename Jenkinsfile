@@ -9,7 +9,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'dev',
+                git branch: 'main',
                     url: 'https://github.com/TrungNhan123-N/Cinemademo_backend.git',
                     credentialsId: 'github-pat'
             }
