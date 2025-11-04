@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         REGISTRY = "docker.io"
-        IMAGE_NAME = "Cinemademo_backend"
+        IMAGE_NAME = "cinemademo_backend"
     }
 
     stages {
