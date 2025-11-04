@@ -24,7 +24,7 @@ pipeline {
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
                         echo "🚧 Building Docker image..."
-                        sh '''
+                        bat '''
                             docker build -t $IMAGE_NAME:latest .
                         '''
                     }
@@ -41,7 +41,7 @@ pipeline {
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
                         echo "📦 Pushing image to Docker Hub..."
-                        sh '''
+                        bat '''
                             echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
                             docker push $REGISTRY/$DOCKER_USER/$IMAGE_NAME:latest
                         '''
@@ -54,7 +54,7 @@ pipeline {
             steps {
                 script {
                     echo "🚀 Deploying backend container..."
-                    sh '''
+                    bat '''
                     docker rm -f cinema_backend || true
                     docker run -d \
                         -p 8000:8000 \
