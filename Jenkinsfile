@@ -3,15 +3,15 @@ pipeline {
 
     environment {
         REGISTRY = "docker.io"
-        IMAGE_NAME = "cinema-backend-fastapi"
+        IMAGE_NAME = "Cinemademo_backend"
     }
 
     stages {
         stage('Checkout') {
             steps {
                 git branch: 'dev',
-                    url: 'https://github.com/Cinema-Booking-App/cinema-booking-backend.git',
-                    credentialsId: 'github-token'
+                    url: 'https://github.com/TrungNhan123-N/Cinemademo_backend.git',
+                    credentialsId: 'github-pat'
             }
         }
 
@@ -59,7 +59,7 @@ pipeline {
                     docker run -d \
                         -p 8000:8000 \
                         --name cinema_backend \
-                        -e DATABASE_URL="postgresql+psycopg2://postgres:12345678@172.22.0.3:5432/cinema-booking" \
+                        -e DATABASE_URL="postgresql://postgres:372408@localhost:5432/product_cinema" \
                         -e SECRET_KEY="supersecretkey" \
                         -e ACCESS_TOKEN_EXPIRE_MINUTES=30 \
                         -e REFRESH_TOKEN_EXPIRE_DAYS=7 \
