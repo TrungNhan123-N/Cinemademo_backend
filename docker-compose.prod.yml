@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:372408@localhost:5432/product_cinema
+      - DATABASE_URL=postgresql://myuser:mypassword@postgres:5432/mydatabase
       - ENVIRONMENT=production
       - SECRET_KEY=your-super-secret-key-here
     depends_on:
