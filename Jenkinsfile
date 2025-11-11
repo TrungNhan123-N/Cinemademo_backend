@@ -4,7 +4,7 @@ pipeline {
     environment {
         REGISTRY       = "docker.io"
         DOCKER_USER    = "nhanbackend2004"
-        IMAGE_NAME     = "cinemademo_backend"
+        IMAGE_NAME     = "cinema_backend"
         IMAGE_TAG      = "${env.BUILD_NUMBER}"
         FULL_IMAGE     = "${REGISTRY}/${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
         LATEST_IMAGE   = "${REGISTRY}/${DOCKER_USER}/${IMAGE_NAME}:latest"
