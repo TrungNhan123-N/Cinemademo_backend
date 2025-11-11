@@ -1,62 +1,27 @@
-# docker-compose.prod.yml
-# PHIÊN BẢN SIÊU NGẮN – SIÊU MẠNH – CHO FASTAPI (giống .NET 100%)
-version: "3.9"
-
 services:
-  api:
-    image: docker.io/nhanbackend2004/Cinemademo_backend:latest 
-    container_name: fastapi-cinema
-    restart: always
-    expose:
-      - "8000"
-    environment:
-      ENVIRONMENT: Production
-      DATABASE_URL: ${DATABASE_URL}
-    env_file:
-      - .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - app-network
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: cinema-postgres
+  db:
+    image: postgres:15
     restart: always
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: product_cinema
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 372408
     volumes:
-      - pg_data:/var/lib/postgresql/data
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      retries: 5
+      - postgres_data:/var/lib/postgresql/data
 
-  nginx:
-    image: nginx:alpine
-    container_name: cinema-nginx
+  redis:
+    image: redis:alpine
     restart: always
+
+  backend:
+    image: docker.io/nhanbackend2004/cinema_backend:latest
+    restart: always
+    env_file: .env
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - certs:/etc/letsencrypt
-      - webroot:/var/www/html
+      - "8000:8000"
     depends_on:
-      - api
-    networks:
-      - app-network
+      - db
+      - redis
 
 volumes:
-  pg_data:
-  certs:
-  webroot:
-
-networks:
-  app-network:
-    driver: bridge
+  postgres_data:
