@@ -45,7 +45,7 @@ pipeline {
             }
         }
 
-        // ĐÃ ĐƯỢC CẬP NHẬT - BẮT ĐẦU TỪ ĐÂY
+        // === ĐÃ SỬA HOÀN CHỈNH - BẮT ĐẦU TỪ ĐÂY ===
         stage('Deploy to Production Server') {
             steps {
                 script {
@@ -54,41 +54,55 @@ pipeline {
                         sshUserPrivateKey(credentialsId: SSH_CRED_ID, keyFileVariable: 'SSH_KEY')
                     ]) {
                         sh """
-                            # Copy file .env từ Jenkins credential
+                            # Copy .env từ Jenkins credential
                             scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no "\$ENV_FILE" ubuntu@${SERVER_HOST}:/home/ubuntu/.env
 
-                            # Copy các file từ repo (workspace)
+                            # Copy file từ repo
                             scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no ${WORKSPACE}/${COMPOSE_FILE} ubuntu@${SERVER_HOST}:/home/ubuntu/
-                            scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no ${WORKSPACE}/nginx.conf ubuntu@${SERVER_HOST}:/home/ubuntu/ || echo "nginx.conf không tồn tại, bỏ qua"
-                            scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no ${WORKSPACE}/init-ssl.sh ubuntu@${SERVER_HOST}:/home/ubuntu/ || echo "init-ssl.sh không tồn tại, bỏ qua"
+                            scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no ${WORKSPACE}/nginx.conf ubuntu@${SERVER_HOST}:/home/ubuntu/ || true
+                            scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no ${WORKSPACE}/init-ssl.sh ubuntu@${SERVER_HOST}:/home/ubuntu/ || true
 
-                            # SSH vào VPS và deploy
-                            ssh -i "\$SSH_KEY" -o StrictHostKeyChecking=no ubuntu@${SERVER_HOST} \"
-                                cd /home/ubuntu && \
-                                echo '=== Kiểm tra file trên VPS ===' && \
-                                ls -la .env ${COMPOSE_FILE} nginx.conf init-ssl.sh && \
-                                \
-                                echo '=== Pull image mới nhất ===' && \
-                                docker pull ${LATEST_IMAGE} || exit 1 && \
-                                \
-                                echo '=== Dừng và xóa container cũ ===' && \
-                                docker compose -f ${COMPOSE_FILE} --env-file .env down -v || true && \
-                                \
-                                echo '=== Khởi động lại dịch vụ ===' && \
-                                docker compose -f ${COMPOSE_FILE} --env-file .env up -d && \
-                                \
-                                echo '=== Chờ 15 giây để khởi động ===' && sleep 15 && \
-                                \
-                                echo '=== Kiểm tra API ===' && \
-                                curl -f http://localhost:8000/docs && echo 'API ĐÃ CHẠY!' || \
-                                (echo 'API LỖI! Xem log:' && docker compose -f ${COMPOSE_FILE} logs backend | tail -50 && exit 1)
-                            \"
+                            # === TOÀN BỘ CHẠY TRÊN VPS ===
+                            ssh -i "\$SSH_KEY" -o StrictHostKeyChecking=no ubuntu@${SERVER_HOST} bash -s << 'EOF'
+                                cd /home/ubuntu
+
+                                echo '=== KIỂM TRA FILE ==='
+                                ls -la .env ${COMPOSE_FILE} || exit 1
+
+                                echo '=== PULL IMAGE ==='
+                                docker pull ${LATEST_IMAGE} || exit 1
+
+                                echo '=== DỌN DẸP CŨ ==='
+                                docker compose -f ${COMPOSE_FILE} --env-file .env down -v || true
+
+                                echo '=== KHỞI ĐỘNG DỊCH VỤ ==='
+                                docker compose -f ${COMPOSE_FILE} --env-file .env up -d || exit 1
+
+                                echo '=== CHỜ 20 GIÂY ==='
+                                sleep 20
+
+                                echo '=== KIỂM TRA CONTAINER ==='
+                                if ! docker ps | grep -q backend; then
+                                    echo 'BACKEND KHÔNG CHẠY!'
+                                    docker compose -f ${COMPOSE_FILE} logs backend
+                                    exit 1
+                                fi
+
+                                echo '=== TEST API TRÊN VPS ==='
+                                if curl -f http://localhost:8000/docs > /dev/null 2>&1; then
+                                    echo 'API ĐÃ CHẠY THÀNH CÔNG!'
+                                else
+                                    echo 'API LỖI! XEM LOG:'
+                                    docker compose -f ${COMPOSE_FILE} logs backend | tail -50
+                                    exit 1
+                                fi
+EOF
                         """
                     }
                 }
             }
         }
-        // KẾT THÚC PHẦN CẬP NHẬT
+        // === KẾT THÚC PHẦN SỬA ===
     }
 
     post {
