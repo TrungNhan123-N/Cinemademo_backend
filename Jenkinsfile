@@ -2,20 +2,30 @@ pipeline {
     agent any
 
     environment {
-        REGISTRY = "docker.io"
-        IMAGE_NAME = "cinemademo_backend"
+        REGISTRY       = "docker.io"
+        DOCKER_USER    = "nhanbackend2004"                                      // thay bằng username Docker Hub của bạn
+        IMAGE_NAME     = "cinemademo_backend"
+        IMAGE_TAG      = "${env.BUILD_NUMBER}"                                  // tag theo build number
+        FULL_IMAGE     = "${REGISTRY}/${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+        LATEST_IMAGE   = "${REGISTRY}/${DOCKER_USER}/${IMAGE_NAME}:latest"
+        
+        // Server config
+        SERVER_HOST    = "16.176.143.220"                                // ví dụ: 136.110.0.26 hoặc api.cinema-demo.vn
+        SSH_CRED_ID    = "vps-ssh-key"                                          // Jenkins → Credentials → Add SSH key
+        COMPOSE_FILE   = "docker-compose.prod.yml"
     }
 
     stages {
         stage('Checkout') {
             steps {
+                echo "Cloning repository..."
                 git branch: 'main',
                     url: 'https://github.com/TrungNhan123-N/Cinemademo_backend.git',
                     credentialsId: 'github-pat'
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build & Push Docker Image') {
             steps {
                 script {
                     withCredentials([usernamePassword(
@@ -23,63 +33,62 @@ pipeline {
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
-                        echo "🚧 Building Docker image..."
-                        bat '''
-                            docker build -t $IMAGE_NAME:latest .
-                        '''
+                        echo "Building & pushing image..."
+                        bat """
+                            docker build -t ${FULL_IMAGE} -t ${LATEST_IMAGE} .
+                            echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin ${REGISTRY}
+                            docker push ${FULL_IMAGE}
+                            docker push ${LATEST_IMAGE}
+                        """
                     }
                 }
             }
         }
 
-        stage('Push to Docker Hub') {
+        stage('Deploy to Production Server') {
             steps {
                 script {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'dockerhub-cred',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )]) {
-                        echo "📦 Pushing image to Docker Hub..."
-                        bat '''
-                            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                            docker push $REGISTRY/$DOCKER_USER/$IMAGE_NAME:latest
-                        '''
+                    echo "Deploying to production via docker-compose..."
+                    withCredentials([
+                        file(credentialsId: 'cinema-env-prod', variable: 'ENV_FILE'),
+                        sshUserPrivateKey(credentialsId: SSH_CRED_ID, keyFileVariable: 'SSH_KEY')
+                    ]) {
+                        bat """
+                            :: Copy files qua VPS
+                            scp -i %SSH_KEY% -o StrictHostKeyChecking=no %ENV_FILE% ubuntu@${SERVER_HOST}:/home/ubuntu/.env
+                            scp -i %SSH_KEY% -o StrictHostKeyChecking=no ${COMPOSE_FILE} ubuntu@${SERVER_HOST}:/home/ubuntu/
+                            scp -i %SSH_KEY% -o StrictHostKeyChecking=no nginx.conf ubuntu@${SERVER_HOST}:/home/ubuntu/
+                            scp -i %SSH_KEY% -o StrictHostKeyChecking=no init-ssl.sh ubuntu@${SERVER_HOST}:/home/ubuntu/
+
+                            :: SSH vào VPS và deploy
+                            ssh -i %SSH_KEY% -o StrictHostKeyChecking=no ubuntu@${SERVER_HOST} \"
+                                cd /home/ubuntu &&
+                                echo 'Pulling latest image...' &&
+                                docker pull ${LATEST_IMAGE} &&
+                                docker compose -f ${COMPOSE_FILE} --env-file .env up -d --remove-orphans &&
+                                echo 'Renew SSL if needed...' &&
+                                chmod +x init-ssl.sh &&
+                                ./init-ssl.sh ||
+                                echo 'SSL already exists or renewal skipped'
+                            \"
+                        """
                     }
                 }
             }
         }
-
-        stage('Deploy to Server') {
-            steps {
-                script {
-                    echo "🚀 Deploying backend container..."
-                    bat '''
-                    docker rm -f cinema_backend || true
-                    docker run -d \
-                        -p 8000:8000 \
-                        --name cinema_backend \
-                        -e DATABASE_URL="postgresql://postgres:372408@localhost:5432/product_cinema" \
-                        -e SECRET_KEY="supersecretkey" \
-                        -e ACCESS_TOKEN_EXPIRE_MINUTES=30 \
-                        -e REFRESH_TOKEN_EXPIRE_DAYS=7 \
-                        -e ALGORITHM="HS256" \
-                        -e CORS_ALLOW_ORIGINS="http://136.110.0.26:3000" \
-                        phamvantinh/cinema-backend-fastapi:latest
-                    docker image prune -f
-                    '''
-                }
-            }
-        }
-
     }
 
     post {
         success {
-            echo "✅ Backend deploy thành công!"
+            echo "BACKEND ĐÃ DEPLOY THÀNH CÔNG!"
+            echo "Truy cập: https://api.cinema-demo.vn/docs"
         }
         failure {
-            echo "❌ Có lỗi xảy ra trong pipeline!"
+            echo "CÓ LỖI TRONG PIPELINE! Kiểm tra log ngay!"
+        }
+        always {
+            echo "Dọn dẹp image cũ..."
+            bat "docker image prune -f || true"
         }
     }
 }

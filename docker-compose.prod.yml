@@ -1,49 +1,61 @@
+# docker-compose.prod.yml
+# PHIÊN BẢN SIÊU NGẮN – SIÊU MẠNH – CHO FASTAPI (giống .NET 100%)
+version: "3.9"
 
 services:
-  fastapi-app:
-    image: truongdev1510/fastapi-app:latest
-    container_name: fastapi-app-prod
-    ports:
-      - "8000:8000"
+  api:
+    image: docker.io/nhanbackend2004/Cinemademo_backend:latest 
+    container_name: fastapi-cinema
+    restart: always
+    expose:
+      - "8000"
     environment:
-      - DATABASE_URL=postgresql://myuser:mypassword@postgres:5432/mydatabase
-      - ENVIRONMENT=production
-      - SECRET_KEY=your-super-secret-key-here
+      ENVIRONMENT: Production
+      DATABASE_URL: ${DATABASE_URL}
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - app-network
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
   postgres:
-    image: postgres:15-alpine
-    container_name: postgres-prod
+    image: postgres:16-alpine
+    container_name: cinema-postgres
+    restart: always
     environment:
-      - POSTGRES_USER=myuser
-      - POSTGRES_PASSWORD=mypassword
-      - POSTGRES_DB=mydatabase
-    ports:
-      - "5433:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: product_cinema
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data
     networks:
       - app-network
-    restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U myuser"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
-      timeout: 5s
       retries: 5
 
+  nginx:
+    image: nginx:alpine
+    container_name: cinema-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - certs:/etc/letsencrypt
+      - webroot:/var/www/html
+    depends_on:
+      - api
+    networks:
+      - app-network
+
 volumes:
-  postgres_data:
+  pg_data:
+  certs:
+  webroot:
 
 networks:
   app-network:
