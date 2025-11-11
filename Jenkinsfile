@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         REGISTRY       = "docker.io"
-        DOCKER_USER    = "nhanbackend2004"                                      // ← Docker Hub username
+        DOCKER_USER    = "nhanbackend2004"
         IMAGE_NAME     = "cinemademo_backend"
         IMAGE_TAG      = "${env.BUILD_NUMBER}"
         FULL_IMAGE     = "${REGISTRY}/${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
@@ -11,7 +11,7 @@ pipeline {
         
         // Server config
         SERVER_HOST    = "3.25.179.145"
-        SSH_CRED_ID    = "vps-ssh-key"                                          // ← Đảm bảo đã tạo credential này
+        SSH_CRED_ID    = "vps-ssh-key"
         COMPOSE_FILE   = "docker-compose.prod.yml"
     }
 
@@ -45,36 +45,50 @@ pipeline {
             }
         }
 
+        // ĐÃ ĐƯỢC CẬP NHẬT - BẮT ĐẦU TỪ ĐÂY
         stage('Deploy to Production Server') {
             steps {
                 script {
-                    echo "Deploying to production via docker-compose..."
                     withCredentials([
                         file(credentialsId: 'cinema-env-prod', variable: 'ENV_FILE'),
                         sshUserPrivateKey(credentialsId: SSH_CRED_ID, keyFileVariable: 'SSH_KEY')
                     ]) {
                         sh """
-                            # Copy files to VPS
+                            # Copy file .env từ Jenkins credential
                             scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no "\$ENV_FILE" ubuntu@${SERVER_HOST}:/home/ubuntu/.env
-                            scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no ${COMPOSE_FILE} ubuntu@${SERVER_HOST}:/home/ubuntu/
-                            scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no nginx.conf ubuntu@${SERVER_HOST}:/home/ubuntu/
-                            scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no init-ssl.sh ubuntu@${SERVER_HOST}:/home/ubuntu/
 
-                            # SSH to VPS and deploy
+                            # Copy các file từ repo (workspace)
+                            scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no ${WORKSPACE}/${COMPOSE_FILE} ubuntu@${SERVER_HOST}:/home/ubuntu/
+                            scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no ${WORKSPACE}/nginx.conf ubuntu@${SERVER_HOST}:/home/ubuntu/ || echo "nginx.conf không tồn tại, bỏ qua"
+                            scp -i "\$SSH_KEY" -o StrictHostKeyChecking=no ${WORKSPACE}/init-ssl.sh ubuntu@${SERVER_HOST}:/home/ubuntu/ || echo "init-ssl.sh không tồn tại, bỏ qua"
+
+                            # SSH vào VPS và deploy
                             ssh -i "\$SSH_KEY" -o StrictHostKeyChecking=no ubuntu@${SERVER_HOST} \"
                                 cd /home/ubuntu && \
-                                echo 'Pulling latest image...' && \
-                                docker pull ${LATEST_IMAGE} && \
-                                docker compose -f ${COMPOSE_FILE} --env-file .env up -d --remove-orphans && \
-                                echo 'Renew SSL if needed...' && \
-                                chmod +x init-ssl.sh && \
-                                ./init-ssl.sh || echo 'SSL already exists or renewal skipped'
+                                echo '=== Kiểm tra file trên VPS ===' && \
+                                ls -la .env ${COMPOSE_FILE} nginx.conf init-ssl.sh && \
+                                \
+                                echo '=== Pull image mới nhất ===' && \
+                                docker pull ${LATEST_IMAGE} || exit 1 && \
+                                \
+                                echo '=== Dừng và xóa container cũ ===' && \
+                                docker compose -f ${COMPOSE_FILE} --env-file .env down -v || true && \
+                                \
+                                echo '=== Khởi động lại dịch vụ ===' && \
+                                docker compose -f ${COMPOSE_FILE} --env-file .env up -d && \
+                                \
+                                echo '=== Chờ 15 giây để khởi động ===' && sleep 15 && \
+                                \
+                                echo '=== Kiểm tra API ===' && \
+                                curl -f http://localhost:8000/docs && echo 'API ĐÃ CHẠY!' || \
+                                (echo 'API LỖI! Xem log:' && docker compose -f ${COMPOSE_FILE} logs backend | tail -50 && exit 1)
                             \"
                         """
                     }
                 }
             }
         }
+        // KẾT THÚC PHẦN CẬP NHẬT
     }
 
     post {
